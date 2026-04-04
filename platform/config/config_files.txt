@@ -1,0 +1,362 @@
+# config/nginx/nginx.conf
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    # Logging
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    # Rate limiting
+    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+    limit_req_zone $binary_remote_addr zone=web:10m rate=5r/s;
+
+    # Upstream servers
+    upstream backend {
+        server backend:8000;
+        keepalive 32;
+    }
+
+    upstream ai_service {
+        server ai-service:8001;
+        keepalive 16;
+    }
+
+    upstream frontend_dev {
+        server frontend:3000;
+        keepalive 16;
+    }
+
+    # Main server
+    server {
+        listen 80;
+        server_name localhost shout-aloud.local;
+
+        # Security headers
+        add_header X-Frame-Options DENY;
+        add_header X-Content-Type-Options nosniff;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header Referrer-Policy strict-origin-when-cross-origin;
+
+        # Frontend (development mode)
+        location / {
+            proxy_pass http://frontend_dev;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_cache_bypass $http_upgrade;
+        }
+
+        # API endpoints
+        location /api/ {
+            limit_req zone=api burst=20 nodelay;
+            
+            proxy_pass http://backend/;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # CORS headers
+            add_header Access-Control-Allow-Origin *;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
+            add_header Access-Control-Allow-Headers "Content-Type, Authorization";
+            
+            # Handle preflight
+            if ($request_method = 'OPTIONS') {
+                return 204;
+            }
+        }
+
+        # AI service endpoints
+        location /ai/ {
+            limit_req zone=api burst=5 nodelay;
+            
+            proxy_pass http://ai_service/;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Increase timeout for AI processing
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 300s;
+            proxy_read_timeout 300s;
+        }
+
+        # Health check endpoint
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+
+        # IPFS gateway proxy
+        location /ipfs/ {
+            proxy_pass http://ipfs:8080/ipfs/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        # Monitoring endpoints
+        location /metrics {
+            proxy_pass http://prometheus:9090/metrics;
+            allow 172.20.0.0/16;  # Only allow internal network
+            deny all;
+        }
+    }
+}
+
+---
+
+# config/prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'shout-aloud-backend'
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  - job_name: 'shout-aloud-ai'
+    static_configs:
+      - targets: ['ai-service:8001']
+    metrics_path: '/metrics'
+    scrape_interval: 60s
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+    scrape_interval: 30s
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    scrape_interval: 30s
+
+  - job_name: 'ipfs'
+    static_configs:
+      - targets: ['ipfs:5001']
+    metrics_path: '/debug/metrics/prometheus'
+    scrape_interval: 30s
+
+---
+
+# config/grafana/datasources/prometheus.yml
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+---
+
+# database/init.sql
+-- Initialize Shout Aloud database
+
+-- Create users table
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    did VARCHAR(255) UNIQUE NOT NULL,
+    identity_commitment VARCHAR(255) UNIQUE NOT NULL,
+    municipality_code INTEGER,
+    state_code INTEGER,
+    country_code VARCHAR(3) DEFAULT 'MX',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create proposals table
+CREATE TABLE IF NOT EXISTS proposals (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(500) NOT NULL,
+    summary TEXT NOT NULL,
+    content TEXT NOT NULL,
+    category VARCHAR(100) NOT NULL,
+    scope VARCHAR(50) NOT NULL, -- 'municipal', 'state', 'federal'
+    municipality_code INTEGER,
+    state_code INTEGER,
+    country_code VARCHAR(3) DEFAULT 'MX',
+    status VARCHAR(50) DEFAULT 'active', -- 'active', 'closed', 'draft'
+    source_url TEXT,
+    author VARCHAR(255),
+    deadline TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create votes table
+CREATE TABLE IF NOT EXISTS votes (
+    id SERIAL PRIMARY KEY,
+    proposal_id INTEGER REFERENCES proposals(id),
+    nullifier_hash VARCHAR(255) UNIQUE NOT NULL,
+    vote_commitment VARCHAR(255) NOT NULL,
+    municipality_code INTEGER,
+    state_code INTEGER,
+    country_code VARCHAR(3) DEFAULT 'MX',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT unique_vote_per_proposal_per_user UNIQUE (proposal_id, nullifier_hash)
+);
+
+-- Create officials table for governance ratings
+CREATE TABLE IF NOT EXISTS officials (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    position VARCHAR(255) NOT NULL,
+    level VARCHAR(50) NOT NULL, -- 'municipal', 'state', 'federal'
+    municipality_code INTEGER,
+    state_code INTEGER,
+    country_code VARCHAR(3) DEFAULT 'MX',
+    party VARCHAR(100),
+    start_date DATE,
+    end_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create tags table for official ratings
+CREATE TABLE IF NOT EXISTS tags (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    category VARCHAR(50) NOT NULL, -- 'positive', 'negative', 'neutral'
+    weight DECIMAL(3,2) DEFAULT 1.0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create ratings table
+CREATE TABLE IF NOT EXISTS ratings (
+    id SERIAL PRIMARY KEY,
+    official_id INTEGER REFERENCES officials(id),
+    tag_id INTEGER REFERENCES tags(id),
+    user_nullifier VARCHAR(255) NOT NULL,
+    municipality_code INTEGER,
+    state_code INTEGER,
+    country_code VARCHAR(3) DEFAULT 'MX',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT unique_rating_per_user_per_official UNIQUE (official_id, user_nullifier)
+);
+
+-- Create scraped_documents table
+CREATE TABLE IF NOT EXISTS scraped_documents (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(500) NOT NULL,
+    url TEXT UNIQUE NOT NULL,
+    content TEXT,
+    document_type VARCHAR(100),
+    source VARCHAR(255) NOT NULL,
+    country_code VARCHAR(3) DEFAULT 'MX',
+    municipality_code INTEGER,
+    state_code INTEGER,
+    publication_date TIMESTAMP,
+    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ipfs_hash VARCHAR(255),
+    processed BOOLEAN DEFAULT FALSE
+);
+
+-- Create ai_analysis table
+CREATE TABLE IF NOT EXISTS ai_analysis (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER REFERENCES scraped_documents(id),
+    proposal_id INTEGER REFERENCES proposals(id),
+    analysis_type VARCHAR(100) NOT NULL, -- 'impact', 'fairness', 'summary'
+    analysis_result JSONB NOT NULL,
+    confidence_score DECIMAL(3,2),
+    model_version VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert default tags
+INSERT INTO tags (name, category, weight) VALUES
+-- Positive tags
+('ético', 'positive', 1.2),
+('transparente', 'positive', 1.1),
+('eficiente', 'positive', 1.0),
+('cumple_promesas', 'positive', 1.3),
+('cercano_ciudadanos', 'positive', 1.0),
+('innova', 'positive', 1.1),
+('responsable', 'positive', 1.0),
+('honesto', 'positive', 1.2),
+('trabaja_equipo', 'positive', 1.0),
+
+-- Negative tags
+('corrupto', 'negative', -1.5),
+('mentiroso', 'negative', -1.3),
+('ineficiente', 'negative', -1.0),
+('autoritario', 'negative', -1.2),
+('irresponsable', 'negative', -1.1),
+('desconectado', 'negative', -1.0),
+('conflicto_intereses', 'negative', -1.4),
+('nepotismo', 'negative', -1.3),
+('despilfarrador', 'negative', -1.2),
+
+-- Neutral tags
+('nuevo', 'neutral', 0.0),
+('veterano', 'neutral', 0.0),
+('académico', 'neutral', 0.0),
+('empresario', 'neutral', 0.0),
+('activista', 'neutral', 0.0),
+('independiente', 'neutral', 0.1),
+('partido_tradicional', 'neutral', 0.0),
+('joven', 'neutral', 0.0),
+('experimentado', 'neutral', 0.0),
+('localista', 'neutral', 0.0)
+
+ON CONFLICT (name) DO NOTHING;
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status);
+CREATE INDEX IF NOT EXISTS idx_proposals_scope ON proposals(scope);
+CREATE INDEX IF NOT EXISTS idx_proposals_municipality ON proposals(municipality_code);
+CREATE INDEX IF NOT EXISTS idx_votes_proposal ON votes(proposal_id);
+CREATE INDEX IF NOT EXISTS idx_ratings_official ON ratings(official_id);
+CREATE INDEX IF NOT EXISTS idx_scraped_docs_processed ON scraped_documents(processed);
+CREATE INDEX IF NOT EXISTS idx_scraped_docs_source ON scraped_documents(source);
+
+-- Create functions for updating timestamps
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Create triggers for updating timestamps
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_proposals_updated_at BEFORE UPDATE ON proposals FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_officials_updated_at BEFORE UPDATE ON officials FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

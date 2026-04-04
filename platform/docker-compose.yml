@@ -1,0 +1,219 @@
+# ShoutAloud Docker Compose Configuration
+# Full stack deployment for the ShoutAloud citizen governance platform
+#
+# Usage:
+#   docker-compose up -d          # Start all services
+#   docker-compose up -d --build  # Rebuild and start
+#   docker-compose down           # Stop all services
+#   docker-compose logs -f        # View logs
+#
+# Services:
+#   - PostgreSQL: Main database
+#   - Redis: Caching and sessions
+#   - Backend: FastAPI application
+#   - Frontend: React/Vite web app
+#   - IPFS: Decentralized storage
+#   - Hardhat: Local blockchain (development)
+#   - Nginx: Reverse proxy and static file serving
+
+version: '3.8'
+
+services:
+  # ==================== PostgreSQL Database ====================
+  postgres:
+    image: postgres:15-alpine
+    container_name: shoutaloud-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-shoutaloud}
+      POSTGRES_USER: ${POSTGRES_USER:-shoutaloud}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shoutaloud_password}
+      POSTGRES_HOST_AUTH_METHOD: ${POSTGRES_HOST_AUTH_METHOD:-md5}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - shoutaloud-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-shoutaloud} -d ${POSTGRES_DB:-shoutaloud}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==================== Redis Cache ====================
+  redis:
+    image: redis:7-alpine
+    container_name: shoutaloud-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - shoutaloud-network
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== IPFS Decentralized Storage ====================
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: shoutaloud-ipfs
+    restart: unless-stopped
+    ports:
+      - "${IPFS_SWARM_PORT:-4001}:4001/tcp"
+      - "${IPFS_API_PORT:-5001}:5001/tcp"
+      - "${IPFS_GATEWAY_PORT:-8080}:8080/tcp"
+    volumes:
+      - ipfs_data:/data/ipfs
+    networks:
+      - shoutaloud-network
+    environment:
+      - IPFS_PROFILE=server
+      - LIBP2P_FORCE_PNET=0
+    healthcheck:
+      test: ["CMD", "ipfs", "id"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ==================== Hardhat Local Blockchain ====================
+  hardhat:
+    image: node:18-alpine
+    container_name: shoutaloud-hardhat
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "${HARDHAT_RPC_PORT:-8545}:8545"
+      - "${HARDHAT_WS_PORT:-8546}:8546"
+    volumes:
+      - hardhat_data:/app/node_modules
+      - ./packages/blockchain:/app
+    networks:
+      - shoutaloud-network
+    environment:
+      - NODE_ENV=development
+      - HARDHAT_NETWORK=localhost
+    command: >
+      sh -c "npm install && npx hardhat node --hostname 0.0.0.0 --fork ${ETHEREUM_RPC_URL:-}"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8545"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ==================== Backend FastAPI Application ====================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shoutaloud-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./data/models:/app/models
+      - ./data/cache:/app/cache
+    networks:
+      - shoutaloud-network
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-shoutaloud}:${POSTGRES_PASSWORD:-shoutaloud_password}@postgres:5432/${POSTGRES_DB:-shoutaloud}
+      - REDIS_URL=redis://redis:6379/0
+      - BLOCKCHAIN_RPC_URL=http://hardhat:8545
+      - BLOCKCHAIN_CHAIN_ID=${BLOCKCHAIN_CHAIN_ID:-31337}
+      - CONTRACT_ADDRESS=${CONTRACT_ADDRESS:-}
+      - IPFS_API_URL=http://ipfs:5001
+      - IPFS_GATEWAY_URL=http://ipfs:8080
+      - SECRET_KEY=${JWT_SECRET:-shoutaloud-dev-secret-change-in-production}
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - CORS_ORIGIN=http://localhost
+      - API_BASE_URL=http://localhost:8000
+      - PORT=8000
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ==================== Frontend React Application ====================
+  frontend:
+    build:
+      context: ./frontend/web
+      dockerfile: Dockerfile
+    container_name: shoutaloud-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    volumes:
+      - frontend_dist:/usr/share/nginx/html
+    networks:
+      - shoutaloud-network
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_BLOCKCHAIN_RPC_URL=http://localhost:8545
+      - VITE_CONTRACT_ADDRESS=${CONTRACT_ADDRESS:-}
+      - VITE_IPFS_GATEWAY_URL=http://localhost:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ==================== Nginx Reverse Proxy ====================
+  nginx:
+    image: nginx:alpine
+    container_name: shoutaloud-nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - frontend_dist:/usr/share/nginx/html:ro
+    networks:
+      - shoutaloud-network
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "nginx -t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ==================== Volumes ====================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  ipfs_data:
+    driver: local
+  hardhat_data:
+    driver: local
+  frontend_dist:
+    driver: local
+
+# ==================== Networks ====================
+networks:
+  shoutaloud-network:
+    driver: bridge

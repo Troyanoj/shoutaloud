@@ -1,0 +1,17 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { ArrowLeft, Calendar, User, Hash, ExternalLink, MessageCircle, Heart, Share2, Eye, Clock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabase';
+import { ProposalSupportBar } from '@/components/proposals/ProposalSupportBar';
+import { ProposalModerationBar } from '@/components/proposals/ProposalModerationBar';
+import { CommentsSection } from '@/components/comments/CommentsSection';
+import { ProposalAttachments } from '@/components/proposals/ProposalAttachments';
+import { ProposalTimeline } from '@/components/proposals/ProposalTimeline';
+import { ReputationBadge } from '@/components/reputation/ReputationBadge';
+import { useReputationService } from '@/hooks/useReputationService';

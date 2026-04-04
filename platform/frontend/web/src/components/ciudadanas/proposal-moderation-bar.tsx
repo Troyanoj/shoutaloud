@@ -1,0 +1,12 @@
+import React, { useState, useEffect } from 'react';
+import { Shield, CheckCircle, XCircle, AlertTriangle, Eye, MessageSquare } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
+import { useAuthStore } from '@/stores/authStore';
+import { supabase } from '@/lib/supabase';
+import { ReputationBadge } from '@/components/reputation/ReputationBadge';
+import { useReputationService } from '@/hooks/useReputationService';

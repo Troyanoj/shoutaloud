@@ -1,0 +1,41 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build outputs
+dist
+build
+
+# Testing
+coverage
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backend files (exclude from frontend build)
+platform/backend
+platform/blockspace
+packages
+docs
+*.md
+!README.md

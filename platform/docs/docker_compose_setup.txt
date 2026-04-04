@@ -1,0 +1,285 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: shout-aloud-postgres
+    environment:
+      POSTGRES_DB: shoutaloud
+      POSTGRES_USER: shoutaloud
+      POSTGRES_PASSWORD: password123
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - shout-aloud-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shoutaloud -d shoutaloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: shout-aloud-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - shout-aloud-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # IPFS Node
+  ipfs:
+    image: ipfs/go-ipfs:latest
+    container_name: shout-aloud-ipfs
+    ports:
+      - "4001:4001"     # Swarm port
+      - "5001:5001"     # API port
+      - "8080:8080"     # Gateway port
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ./config/ipfs:/container-init.d
+    networks:
+      - shout-aloud-network
+    environment:
+      - IPFS_PROFILE=server
+    healthcheck:
+      test: ["CMD", "ipfs", "id"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Hardhat Blockchain (Local Development)
+  blockchain:
+    build:
+      context: ./blockchain
+      dockerfile: Dockerfile
+    container_name: shout-aloud-blockchain
+    ports:
+      - "8545:8545"     # JSON-RPC port
+      - "8546:8546"     # WebSocket port
+    volumes:
+      - ./blockchain:/app
+      - blockchain_data:/app/cache
+    networks:
+      - shout-aloud-network
+    environment:
+      - NODE_ENV=development
+      - HARDHAT_NETWORK=localhost
+    command: npx hardhat node --hostname 0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8545"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shout-aloud-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./data/models:/app/models
+      - ./data/cache:/app/cache
+    networks:
+      - shout-aloud-network
+    environment:
+      - DATABASE_URL=postgresql://shoutaloud:password123@postgres:5432/shoutaloud
+      - REDIS_URL=redis://redis:6379/0
+      - BLOCKCHAIN_RPC_URL=http://blockchain:8545
+      - IPFS_API_URL=http://ipfs:5001
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+      - MODEL_CACHE_DIR=/app/cache
+      - AI_MODEL=llama2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      blockchain:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # AI Service
+  ai-service:
+    build:
+      context: ./backend/ai
+      dockerfile: Dockerfile
+    container_name: shout-aloud-ai
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./backend/ai:/app
+      - ./data/models:/app/models
+      - ./data/cache:/app/cache
+    networks:
+      - shout-aloud-network
+    environment:
+      - MODEL_PATH=/app/models
+      - CACHE_DIR=/app/cache
+      - HF_HOME=/app/cache/huggingface
+      - TRANSFORMERS_CACHE=/app/cache/transformers
+      - TORCH_HOME=/app/cache/torch
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: uvicorn api:app --host 0.0.0.0 --port 8001 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+
+  # Web Scraper
+  scraper:
+    build:
+      context: ./scraping
+      dockerfile: Dockerfile
+    container_name: shout-aloud-scraper
+    volumes:
+      - ./scraping:/app
+      - ./data/scraped:/app/data
+      - ./data/cache:/app/cache
+    networks:
+      - shout-aloud-network
+    environment:
+      - DATABASE_URL=postgresql://shoutaloud:password123@postgres:5432/shoutaloud
+      - REDIS_URL=redis://redis:6379/1
+      - SCRAPING_INTERVAL=3600
+      - OUTPUT_DIR=/app/data
+      - USER_AGENT=ShoutAloud-Scraper/1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python scheduler.py
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; r=redis.Redis(host='redis'); r.ping()"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Development Server
+  frontend:
+    build:
+      context: ./frontend-mobile
+      dockerfile: Dockerfile.dev
+    container_name: shout-aloud-frontend
+    ports:
+      - "3000:3000"     # Development server
+      - "19000:19000"   # Expo DevTools
+      - "19001:19001"   # Expo Metro bundler
+      - "19006:19006"   # Expo web
+    volumes:
+      - ./frontend-mobile:/app
+      - /app/node_modules
+    networks:
+      - shout-aloud-network
+    environment:
+      - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
+      - REACT_NATIVE_PACKAGER_HOSTNAME=0.0.0.0
+      - API_BASE_URL=http://localhost:8000
+      - BLOCKCHAIN_RPC_URL=http://localhost:8545
+      - IPFS_GATEWAY_URL=http://localhost:8080
+    command: npm start
+    stdin_open: true
+    tty: true
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: shout-aloud-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/nginx/ssl:/etc/nginx/ssl
+      - ./frontend-mobile/dist:/usr/share/nginx/html
+    networks:
+      - shout-aloud-network
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: shout-aloud-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - shout-aloud-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: shout-aloud-grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - shout-aloud-network
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+
+volumes:
+  postgres_data:
+  redis_data:
+  ipfs_data:
+  blockchain_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  shout-aloud-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -1,0 +1,308 @@
+# Makefile for Shout Aloud Platform
+# Provides easy commands for development and deployment
+
+.PHONY: help setup start stop restart status logs clean test build deploy
+
+# Default target
+help: ## Show this help message
+	@echo "🏛️  Shout Aloud Platform - Available Commands"
+	@echo "=============================================="
+	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
+	@echo ""
+	@echo "🔗 Service URLs (when running):"
+	@echo "   Frontend:   http://localhost:3000"
+	@echo "   API:        http://localhost:8000/docs"
+	@echo "   AI:         http://localhost:8001/docs"
+	@echo "   Blockchain: http://localhost:8545"
+	@echo "   IPFS:       http://localhost:8080"
+	@echo "   Monitoring: http://localhost:3001"
+
+# Setup and initialization
+setup: ## Run initial setup (creates directories, configs, downloads images)
+	@echo "🚀 Setting up Shout Aloud Platform..."
+	@chmod +x scripts/setup.sh
+	@./scripts/setup.sh --quick
+
+setup-minimal: ## Minimal setup (no downloads)
+	@echo "📦 Minimal setup..."
+	@chmod +x scripts/setup.sh
+	@./scripts/setup.sh --minimal
+
+# Service management
+start: ## Start all services
+	@echo "🚀 Starting Shout Aloud Platform..."
+	@docker-compose up -d
+	@echo "✅ Platform started!"
+	@echo "📱 Frontend: http://localhost:3000"
+	@echo "🔌 API: http://localhost:8000"
+	@echo "🤖 AI: http://localhost:8001"
+
+stop: ## Stop all services
+	@echo "🛑 Stopping Shout Aloud Platform..."
+	@docker-compose down
+	@echo "✅ Platform stopped!"
+
+restart: ## Restart all services
+	@echo "🔄 Restarting Shout Aloud Platform..."
+	@docker-compose restart
+	@echo "✅ Platform restarted!"
+
+status: ## Show service status
+	@echo "📊 Shout Aloud Platform Status:"
+	@docker-compose ps
+	@echo ""
+	@echo "🔗 Service URLs:"
+	@echo "  Frontend:   http://localhost:3000"
+	@echo "  API:        http://localhost:8000"
+	@echo "  AI:         http://localhost:8001"
+	@echo "  Blockchain: http://localhost:8545"
+	@echo "  IPFS:       http://localhost:8080"
+	@echo "  Database:   localhost:5432"
+	@echo "  Monitoring: http://localhost:3001"
+
+# Development
+dev: ## Start in development mode with logs
+	@echo "🔧 Starting in development mode..."
+	@docker-compose up
+
+dev-build: ## Rebuild and start in development mode
+	@echo "🔨 Building and starting in development mode..."
+	@docker-compose up --build
+
+# Logs
+logs: ## Show logs for all services
+	@docker-compose logs -f
+
+logs-backend: ## Show backend logs
+	@docker-compose logs -f backend
+
+logs-ai: ## Show AI service logs
+	@docker-compose logs -f ai-service
+
+logs-scraper: ## Show scraper logs
+	@docker-compose logs -f scraper
+
+logs-blockchain: ## Show blockchain logs
+	@docker-compose logs -f blockchain
+
+logs-frontend: ## Show frontend logs
+	@docker-compose logs -f frontend
+
+# Building
+build: ## Build all Docker images
+	@echo "🔨 Building Docker images..."
+	@docker-compose build
+	@echo "✅ Build complete!"
+
+build-no-cache: ## Build all Docker images without cache
+	@echo "🔨 Building Docker images (no cache)..."
+	@docker-compose build --no-cache
+	@echo "✅ Build complete!"
+
+pull: ## Pull latest Docker images
+	@echo "📥 Pulling latest Docker images..."
+	@docker-compose pull
+	@echo "✅ Pull complete!"
+
+# Database operations
+db-reset: ## Reset database (WARNING: deletes all data)
+	@echo "⚠️  WARNING: This will delete all database data!"
+	@read -p "Are you sure? (y/N): " confirm && [ "$$confirm" = "y" ] || exit 1
+	@docker-compose down
+	@docker volume rm platform_postgres_data 2>/dev/null || true
+	@docker-compose up -d postgres
+	@echo "✅ Database reset complete!"
+
+db-backup: ## Backup database
+	@echo "💾 Creating database backup..."
+	@mkdir -p backups
+	@docker-compose exec postgres pg_dump -U shoutaloud shoutaloud > backups/backup_$(shell date +%Y%m%d_%H%M%S).sql
+	@echo "✅ Database backup created in backups/"
+
+db-restore: ## Restore database from backup (specify BACKUP_FILE=filename)
+	@if [ -z "$(BACKUP_FILE)" ]; then echo "❌ Please specify BACKUP_FILE=filename"; exit 1; fi
+	@echo "📂 Restoring database from $(BACKUP_FILE)..."
+	@docker-compose exec -T postgres psql -U shoutaloud -d shoutaloud < $(BACKUP_FILE)
+	@echo "✅ Database restore complete!"
+
+# Testing
+test: ## Run all tests
+	@echo "🧪 Running tests..."
+	@docker-compose exec backend python -m pytest tests/ -v
+	@docker-compose exec ai-service python -m pytest tests/ -v
+	@echo "✅ Tests complete!"
+
+test-backend: ## Run backend tests
+	@echo "🧪 Running backend tests..."
+	@docker-compose exec backend python -m pytest tests/ -v
+
+test-ai: ## Run AI service tests
+	@echo "🧪 Running AI service tests..."
+	@docker-compose exec ai-service python -m pytest tests/ -v
+
+test-integration: ## Run integration tests
+	@echo "🧪 Running integration tests..."
+	@./scripts/integration-tests.sh
+
+# Health checks
+health: ## Check health of all services
+	@echo "🏥 Checking service health..."
+	@curl -f http://localhost:8000/health && echo "✅ Backend healthy" || echo "❌ Backend unhealthy"
+	@curl -f http://localhost:8001/health && echo "✅ AI service healthy" || echo "❌ AI service unhealthy"
+	@curl -f http://localhost:8080/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn && echo "✅ IPFS healthy" || echo "❌ IPFS unhealthy"
+
+# Deployment
+deploy-local: ## Deploy for local development
+	@echo "🚀 Deploying locally..."
+	@make build
+	@make start
+	@make health
+
+deploy-prod: ## Deploy for production
+	@echo "🚀 Deploying for production..."
+	@docker-compose -f docker-compose.prod.yml up -d --build
+	@echo "✅ Production deployment complete!"
+
+# Blockchain operations
+blockchain-compile: ## Compile smart contracts
+	@echo "⛓️  Compiling smart contracts..."
+	@docker-compose exec blockchain npx hardhat compile
+	@echo "✅ Contracts compiled!"
+
+blockchain-deploy: ## Deploy smart contracts
+	@echo "⛓️  Deploying smart contracts..."
+	@docker-compose exec blockchain npx hardhat run scripts/deploy.js --network localhost
+	@echo "✅ Contracts deployed!"
+
+blockchain-test: ## Test smart contracts
+	@echo "⛓️  Testing smart contracts..."
+	@docker-compose exec blockchain npx hardhat test
+	@echo "✅ Contract tests complete!"
+
+# IPFS operations
+ipfs-add: ## Add file to IPFS (specify FILE=path)
+	@if [ -z "$(FILE)" ]; then echo "❌ Please specify FILE=path"; exit 1; fi
+	@echo "📁 Adding $(FILE) to IPFS..."
+	@docker-compose exec ipfs ipfs add $(FILE)
+
+ipfs-pin: ## Pin IPFS hash (specify HASH=ipfs_hash)
+	@if [ -z "$(HASH)" ]; then echo "❌ Please specify HASH=ipfs_hash"; exit 1; fi
+	@echo "📌 Pinning $(HASH)..."
+	@docker-compose exec ipfs ipfs pin add $(HASH)
+
+ipfs-status: ## Show IPFS status
+	@echo "📊 IPFS Status:"
+	@docker-compose exec ipfs ipfs swarm peers | wc -l | awk '{print "Connected peers: " $$1}'
+	@docker-compose exec ipfs ipfs repo stat
+
+# Frontend operations
+frontend-build: ## Build frontend for production
+	@echo "🏗️  Building frontend..."
+	@docker-compose exec frontend npm run build
+	@echo "✅ Frontend build complete!"
+
+frontend-deploy: ## Deploy frontend to IPFS
+	@echo "🚀 Deploying frontend to IPFS..."
+	@make frontend-build
+	@docker-compose exec ipfs ipfs add -r /app/dist
+	@echo "✅ Frontend deployed to IPFS!"
+
+# AI operations
+ai-download-models: ## Download AI models
+	@echo "🤖 Downloading AI models..."
+	@docker-compose exec ai-service python download_models.py
+	@echo "✅ AI models downloaded!"
+
+ai-analyze: ## Analyze text with AI (specify TEXT="your text")
+	@if [ -z "$(TEXT)" ]; then echo "❌ Please specify TEXT=\"your text\""; exit 1; fi
+	@echo "🤖 Analyzing text..."
+	@curl -X POST http://localhost:8001/analyze \
+		-H "Content-Type: application/json" \
+		-d '{"text": "$(TEXT)"}'
+
+# Scraper operations
+scraper-run: ## Run scraper manually
+	@echo "🕷️  Running scraper..."
+	@docker-compose exec scraper python run_scraper.py
+	@echo "✅ Scraping complete!"
+
+scraper-status: ## Show scraper status
+	@echo "📊 Scraper Status:"
+	@docker-compose exec scraper python -c "import redis; r=redis.Redis(host='redis'); print(f'Queue size: {r.llen(\"scraper_queue\")}')"
+
+# Monitoring
+monitoring: ## Open monitoring dashboard
+	@echo "📊 Opening monitoring dashboard..."
+	@xdg-open http://localhost:3001 2>/dev/null || open http://localhost:3001 2>/dev/null || echo "Open http://localhost:3001 manually"
+
+metrics: ## Show system metrics
+	@echo "📈 System Metrics:"
+	@docker stats --no-stream
+
+# Cleanup
+clean: ## Clean up Docker resources
+	@echo "🧹 Cleaning up Docker resources..."
+	@docker-compose down
+	@docker system prune -f
+	@docker volume prune -f
+	@echo "✅ Cleanup complete!"
+
+clean-all: ## Clean up everything including volumes (WARNING: deletes all data)
+	@echo "⚠️  WARNING: This will delete all data!"
+	@read -p "Are you sure? (y/N): " confirm && [ "$$confirm" = "y" ] || exit 1
+	@docker-compose down -v
+	@docker system prune -a -f
+	@docker volume prune -f
+	@echo "✅ Complete cleanup done!"
+
+# Backup and restore
+backup: ## Create full backup
+	@echo "💾 Creating full backup..."
+	@mkdir -p backups/$(shell date +%Y%m%d_%H%M%S)
+	@make db-backup
+	@cp -r data/ backups/$(shell date +%Y%m%d_%H%M%S)/
+	@echo "✅ Full backup created!"
+
+# Development utilities
+shell-backend: ## Open shell in backend container
+	@docker-compose exec backend bash
+
+shell-ai: ## Open shell in AI service container
+	@docker-compose exec ai-service bash
+
+shell-db: ## Open database shell
+	@docker-compose exec postgres psql -U shoutaloud -d shoutaloud
+
+shell-redis: ## Open Redis shell
+	@docker-compose exec redis redis-cli
+
+# Quick start commands
+install: setup start ## Install and start everything (alias for setup + start)
+
+run: start ## Start services (alias for start)
+
+# Environment checks
+check: ## Check system requirements and configuration
+	@echo "🔍 Checking system requirements..."
+	@command -v docker >/dev/null 2>&1 || (echo "❌ Docker not found" && exit 1)
+	@command -v docker-compose >/dev/null 2>&1 || docker compose version >/dev/null 2>&1 || (echo "❌ Docker Compose not found" && exit 1)
+	@[ -f .env ] || (echo "❌ .env file not found, run 'make setup' first" && exit 1)
+	@[ -f docker-compose.yml ] || (echo "❌ docker-compose.yml not found" && exit 1)
+	@echo "✅ System requirements met!"
+
+# Version info
+version: ## Show version information
+	@echo "🏛️  Shout Aloud Platform"
+	@echo "========================"
+	@echo "Version: 1.0.0"
+	@echo "Docker: $(shell docker --version)"
+	@echo "Docker Compose: $(shell docker-compose --version 2>/dev/null || docker compose version)"
+	@echo "Platform: $(shell uname -s)"
+
+# Update
+update: ## Update all Docker images
+	@echo "📦 Updating Docker images..."
+	@docker-compose pull
+	@docker-compose build --pull
+	@echo "✅ Update complete!"
