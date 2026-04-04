@@ -113,3 +113,4 @@ replit_config_final.json
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.vercel
