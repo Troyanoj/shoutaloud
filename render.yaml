@@ -18,4 +18,4 @@ services:
       - key: CORS_ORIGIN
         value: https://shoutaloud.vercel.app
       - key: WORLD_APP_ID
-        value: app_0xe446214402fd8f70e43adaaf0cde8244782933d8fc4a67b434e16bbcde665180
+        value: app_c4a9d808ee0c2408d4bb18ce8aa164a4

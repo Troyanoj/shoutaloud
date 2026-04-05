@@ -3,7 +3,7 @@ import { IDKitWidget, ISuccessResult, VerificationLevel } from '@worldcoin/idkit
 import { useState } from 'react';
 import api from '../services/api';
 
-const WORLD_APP_ID = import.meta.env.VITE_WORLD_APP_ID || 'app_0xe446214402fd8f70e43adaaf0cde8244782933d8fc4a67b434e16bbcde665180';
+const WORLD_APP_ID = import.meta.env.VITE_WORLD_APP_ID || '';
 
 interface WorldIDButtonProps {
   onSuccess: (data: { nullifier_hash: string }) => void;
@@ -14,6 +14,9 @@ export default function WorldIDButton({ onSuccess, mode }: WorldIDButtonProps) {
   const toast = useToast();
   const [isVerifying, setIsVerifying] = useState(false);
 
+  const actionName = mode === 'register' ? 'shoutaloud-register' : 'shoutaloud-login';
+  const signalValue = mode === 'register' ? 'new-user-registration' : 'user-login';
+
   const handleSuccess = async (proof: ISuccessResult) => {
     setIsVerifying(true);
     try {
@@ -22,7 +25,7 @@ export default function WorldIDButton({ onSuccess, mode }: WorldIDButtonProps) {
         merkle_root: proof.merkle_root,
         proof: proof.proof,
         verification_level: proof.verification_level,
-        action: mode === 'register' ? 'shoutaloud-register' : 'shoutaloud-login',
+        action: actionName,
       });
 
       if (response.data.access_token) {
@@ -37,22 +40,42 @@ export default function WorldIDButton({ onSuccess, mode }: WorldIDButtonProps) {
         });
       }
     } catch (error: any) {
+      const detail = error.response?.data?.detail || 'No se pudo verificar tu identidad';
       toast({
         title: 'Error de verificación',
-        description: error.response?.data?.detail || 'No se pudo verificar tu identidad',
+        description: detail,
         status: 'error',
-        duration: 5000,
+        duration: 8000,
+        isClosable: true,
       });
     } finally {
       setIsVerifying(false);
     }
   };
 
+  if (!WORLD_APP_ID) {
+    return (
+      <VStack spacing={2}>
+        <Button
+          colorScheme="gray"
+          size="lg"
+          width="full"
+          isDisabled
+        >
+          🌐 World ID (no configurado)
+        </Button>
+        <Text fontSize="xs" color="gray.500" textAlign="center">
+          Configura VITE_WORLD_APP_ID en las variables de entorno
+        </Text>
+      </VStack>
+    );
+  }
+
   return (
     <IDKitWidget
       app_id={WORLD_APP_ID}
-      action={mode === 'register' ? 'shoutaloud-register' : 'shoutaloud-login'}
-      signal={mode === 'register' ? 'new-user' : 'returning-user'}
+      action={actionName}
+      signal={signalValue}
       verification_level={VerificationLevel.Device}
       onSuccess={handleSuccess}
       handleVerify={() => setIsVerifying(true)}
