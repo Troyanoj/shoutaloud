@@ -53,5 +53,9 @@ def get_db() -> Generator[Session, None, None]:
 
 def init_db() -> None:
     """Create all tables. Call once on startup."""
-    from models import user, proposal, vote, official, tag, rating, scraped_document, ai_analysis, audit_log, notification
+    from models import (
+        user, proposal, vote, official, tag, rating,
+        scraped_document, ai_analysis, audit_log, notification,
+        comment, moderation,
+    )
     Base.metadata.create_all(bind=engine)

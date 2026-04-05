@@ -40,6 +40,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     try:
         init_db()
         logger.info("Database initialized successfully")
+        from seed_data import seed_data
+        seed_data()
+        logger.info("Seed data loaded")
     except Exception as e:
         logger.warning(f"Database initialization failed: {e}. Running in demo mode.")
     yield
