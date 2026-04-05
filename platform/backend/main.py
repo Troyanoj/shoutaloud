@@ -146,6 +146,22 @@ async def debug_info():
         "database_url": os.getenv("DATABASE_URL", "not set")[:30] + "...",
     }
 
+
+@app.post("/debug/seed")
+async def run_seed():
+    """Manually trigger seed data population."""
+    try:
+        from seed_data import seed_data
+        seed_data()
+        return {"status": "success", "message": "Seed data loaded"}
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to ShoutAloud API", "version": "2.0.0", "docs": "/docs", "health": "/health"}
