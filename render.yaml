@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: shoutaloud-api
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    rootDir: platform/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        value: https://shoutaloud.vercel.app
+      - key: PYTHON_VERSION
+        value: 3.11.0
