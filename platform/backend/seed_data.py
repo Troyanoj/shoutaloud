@@ -1,5 +1,6 @@
 """Seed data for development and testing."""
 import logging
+import traceback
 from datetime import datetime, timedelta
 from core.database import SessionLocal
 from models.user import User
@@ -14,7 +15,10 @@ logger = logging.getLogger(__name__)
 def seed_data():
     db = SessionLocal()
     try:
-        if db.query(User).first() is not None:
+        user_count = db.query(User).count()
+        logger.info(f"Current user count: {user_count}")
+
+        if user_count > 0:
             logger.info("Database already has data, skipping seed")
             return
 
