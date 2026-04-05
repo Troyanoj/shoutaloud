@@ -11,8 +11,10 @@ import {
   Text,
   useColorModeValue,
   useToast,
+  Divider,
 } from '@chakra-ui/react';
 import { useAuth } from '../contexts/AuthContext';
+import WorldIDButton from '../components/WorldIDButton';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -46,6 +48,10 @@ export default function LoginPage() {
     }
   };
 
+  const handleWorldIDSuccess = () => {
+    navigate('/proposals');
+  };
+
   return (
     <Box
       minH="calc(100vh - 80px)"
@@ -70,46 +76,56 @@ export default function LoginPage() {
           boxShadow="lg"
           p={8}
         >
-          <form onSubmit={handleSubmit}>
-            <Stack spacing={4}>
-              <FormControl id="email" isRequired>
-                <FormLabel>Email address</FormLabel>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </FormControl>
+          <Stack spacing={6}>
+            <WorldIDButton onSuccess={handleWorldIDSuccess} mode="login" />
 
-              <FormControl id="password" isRequired>
-                <FormLabel>Password</FormLabel>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </FormControl>
+            <Divider />
 
+            <Text textAlign="center" fontSize="sm" color="gray.500">
+              Or sign in with email
+            </Text>
+
+            <form onSubmit={handleSubmit}>
               <Stack spacing={4}>
-                <Button
-                  type="submit"
-                  colorScheme="blue"
-                  isLoading={isLoading}
-                >
-                  Sign in
-                </Button>
+                <FormControl id="email" isRequired>
+                  <FormLabel>Email address</FormLabel>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </FormControl>
 
-                <Text align="center">
-                  Don't have an account?{' '}
-                  <RouterLink to="/register">
-                    <Text as="span" color="blue.500">
-                      Register here
-                    </Text>
-                  </RouterLink>
-                </Text>
+                <FormControl id="password" isRequired>
+                  <FormLabel>Password</FormLabel>
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </FormControl>
+
+                <Stack spacing={4}>
+                  <Button
+                    type="submit"
+                    colorScheme="blue"
+                    isLoading={isLoading}
+                  >
+                    Sign in with email
+                  </Button>
+
+                  <Text align="center">
+                    Don't have an account?{' '}
+                    <RouterLink to="/register">
+                      <Text as="span" color="blue.500">
+                        Register here
+                      </Text>
+                    </RouterLink>
+                  </Text>
+                </Stack>
               </Stack>
-            </Stack>
-          </form>
+            </form>
+          </Stack>
         </Box>
       </Stack>
     </Box>

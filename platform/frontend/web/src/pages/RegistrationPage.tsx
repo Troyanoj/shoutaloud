@@ -12,8 +12,10 @@ import {
   useColorModeValue,
   useToast,
   FormErrorMessage,
+  Divider,
 } from '@chakra-ui/react';
 import { useAuth } from '../contexts/AuthContext';
+import WorldIDButton from '../components/WorldIDButton';
 
 interface FormErrors {
   name?: string;
@@ -100,6 +102,10 @@ export default function RegistrationPage() {
     }));
   };
 
+  const handleWorldIDSuccess = () => {
+    navigate('/proposals');
+  };
+
   return (
     <Box
       minH="calc(100vh - 80px)"
@@ -124,7 +130,16 @@ export default function RegistrationPage() {
           boxShadow="lg"
           p={8}
         >
-          <form onSubmit={handleSubmit}>
+          <Stack spacing={6}>
+            <WorldIDButton onSuccess={handleWorldIDSuccess} mode="register" />
+
+            <Divider />
+
+            <Text textAlign="center" fontSize="sm" color="gray.500">
+              Or register with email
+            </Text>
+
+            <form onSubmit={handleSubmit}>
             <Stack spacing={4}>
               <FormControl id="name" isRequired isInvalid={!!errors.name}>
                 <FormLabel>Full Name</FormLabel>

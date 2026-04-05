@@ -4,8 +4,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 from jose import JWTError, jwt
 import bcrypt
+import httpx
 import os
 
 from core.database import get_db
@@ -19,6 +21,7 @@ security = HTTPBearer()
 SECRET_KEY = os.getenv("JWT_SECRET", "dev-secret-change-in-production")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+WORLD_APP_ID = os.getenv("WORLD_APP_ID", "app_0xe446214402fd8f70e43adaaf0cde8244782933d8fc4a67b434e16bbcde665180")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -132,3 +135,65 @@ async def verify_token(token: str, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserProfile)
 async def get_current_user_profile(current_user: User = Depends(get_current_user)):
     return UserProfile.model_validate(current_user)
+
+
+# ==================== World ID Authentication ====================
+
+class WorldIDRequest(BaseModel):
+    nullifier_hash: str
+    merkle_root: str
+    proof: str
+    verification_level: str
+    action: str
+
+
+@router.post("/world-id", response_model=Token)
+async def world_id_login(request: WorldIDRequest, db: Session = Depends(get_db)):
+    # Verify the proof with Worldcoin's verify endpoint
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://developer.worldcoin.org/api/v2/verify",
+            json={
+                "app_id": WORLD_APP_ID,
+                "action": request.action,
+                "signal": request.action.replace("shoutaloud-", ""),
+                "proof": request.proof,
+                "merkle_root": request.merkle_root,
+                "nullifier_hash": request.nullifier_hash,
+            },
+            timeout=30.0,
+        )
+        result = response.json()
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"World ID verification failed: {result.get('detail', 'Unknown error')}",
+        )
+
+    # Check if user exists by nullifier_hash (stored as DID)
+    did = f"did:world:{request.nullifier_hash}"
+    user = UserCRUD.get_user_by_did(db, did)
+
+    if not user:
+        # Create new user
+        user_dict = {
+            "did": did,
+            "identity_commitment": did,
+            "is_verified": True,
+            "is_active": True,
+        }
+        user = UserCRUD.create_user(db, user_dict)
+
+    # Generate JWT token
+    access_token = create_access_token(
+        data={"sub": user.id}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    UserCRUD.update_last_login(db, user.id)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": UserResponse.model_validate(user),
+    }
