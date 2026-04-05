@@ -182,8 +182,18 @@ async def world_id_login(request: WorldIDRequest, db: Session = Depends(get_db))
                 },
                 timeout=30.0,
             )
-            result = response.json()
-            logger.info(f"Worldcoin API response status: {response.status_code}")
+            logger.info(f"Worldcoin API HTTP status: {response.status_code}")
+            logger.info(f"Worldcoin API raw response: {response.text[:500]}")
+            
+            try:
+                result = response.json()
+            except Exception:
+                logger.error(f"Worldcoin API returned non-JSON response: {response.text}")
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Worldcoin API returned invalid response (HTTP {response.status_code}): {response.text[:200]}",
+                )
+            
             logger.info(f"Worldcoin API response body: {result}")
 
         if not result.get("success"):
