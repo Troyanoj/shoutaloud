@@ -206,6 +206,7 @@ export default function RegistrationPage() {
               </Stack>
             </Stack>
           </form>
+          </Stack>
         </Box>
       </Stack>
     </Box>
