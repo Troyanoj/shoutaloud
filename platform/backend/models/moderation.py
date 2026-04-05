@@ -34,7 +34,7 @@ class ModerationAction(Base):
     content_id = Column(String(255), nullable=False, index=True)
     action_type = Column(String(50), nullable=False, index=True)
     reason = Column(Text, nullable=True)
-    metadata = Column(JSON, nullable=True)
+    action_metadata = Column("metadata", JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     moderator = relationship("User", foreign_keys=[moderator_id])
