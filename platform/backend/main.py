@@ -162,6 +162,44 @@ async def run_seed():
             "traceback": traceback.format_exc(),
         }
 
+
+@app.post("/debug/migrate")
+async def run_migration():
+    """Drop and recreate all tables to match current models."""
+    try:
+        from core.database import Base, engine, SessionLocal
+        from models import (
+            user, proposal, vote, official, tag, rating,
+            comment, notification, audit_log, ai_analysis,
+            scraped_document, moderation,
+        )
+
+        # Drop all tables
+        Base.metadata.drop_all(bind=engine)
+
+        # Recreate all tables
+        Base.metadata.create_all(bind=engine)
+
+        # Verify
+        db = SessionLocal()
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        db.close()
+
+        return {
+            "status": "success",
+            "message": f"Tables recreated: {len(tables)} tables",
+            "tables": tables,
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to ShoutAloud API", "version": "2.0.0", "docs": "/docs", "health": "/health"}
