@@ -1,5 +1,6 @@
 """User CRUD operations."""
 from typing import Optional, Dict, Any
+import secrets
 from sqlalchemy.orm import Session
 from models.user import User
 
@@ -20,7 +21,14 @@ class UserCRUD:
     @staticmethod
     def create_user(db: Session, user_data: Dict[str, Any]) -> User:
         if 'did' not in user_data:
-            user_data['did'] = User.generate_did(user_data['email'])
+            email = user_data.get('email', f'anonymous_{secrets.token_hex(8)}@shoutaloud.local')
+            user_data['did'] = User.generate_did(email)
+        if 'identity_commitment' not in user_data:
+            user_data['identity_commitment'] = user_data['did']
+        if 'municipality_code' not in user_data:
+            user_data['municipality_code'] = 0
+        if 'state_code' not in user_data:
+            user_data['state_code'] = 0
         db_user = User(**user_data)
         db.add(db_user)
         db.commit()
