@@ -213,6 +213,9 @@ def seed_data():
 
     except Exception as e:
         db.rollback()
-        logger.error(f"Error seeding database: {e}")
+        import traceback
+        error_msg = f"Error seeding database: {e}\n{traceback.format_exc()}"
+        logger.error(error_msg)
+        raise  # Re-raise so the caller can see it
     finally:
         db.close()
