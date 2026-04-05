@@ -1,6 +1,6 @@
 """User model with decentralized identity support."""
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Index
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, Index
 from sqlalchemy.orm import relationship
 from core.database import Base
 import hashlib
