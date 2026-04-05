@@ -20,6 +20,12 @@ export default function WorldIDButton({ onSuccess, mode }: WorldIDButtonProps) {
   const handleSuccess = async (proof: ISuccessResult) => {
     setIsVerifying(true);
     try {
+      console.log('🌐 World ID proof received:', {
+        nullifier_hash: proof.nullifier_hash,
+        action: actionName,
+      });
+      console.log('🌐 Sending to:', `${api.defaults.baseURL}/api/auth/world-id`);
+
       const response = await api.post('/api/auth/world-id', {
         nullifier_hash: proof.nullifier_hash,
         merkle_root: proof.merkle_root,
@@ -27,6 +33,8 @@ export default function WorldIDButton({ onSuccess, mode }: WorldIDButtonProps) {
         verification_level: proof.verification_level,
         action: actionName,
       });
+
+      console.log('🌐 Backend response:', response.data);
 
       if (response.data.access_token) {
         localStorage.setItem('token', response.data.access_token);
@@ -40,7 +48,10 @@ export default function WorldIDButton({ onSuccess, mode }: WorldIDButtonProps) {
         });
       }
     } catch (error: any) {
-      const detail = error.response?.data?.detail || 'No se pudo verificar tu identidad';
+      console.error('🌐 World ID error:', error);
+      console.error('🌐 Error response:', error.response?.data);
+      console.error('🌐 Error status:', error.response?.status);
+      const detail = error.response?.data?.detail || error.message || 'No se pudo verificar tu identidad';
       toast({
         title: 'Error de verificación',
         description: detail,
