@@ -39,14 +39,15 @@ export default function Navbar() {
   return (
     <Box bg={bgColor} px={4} shadow="md" borderBottom="1px" borderColor={useColorModeValue('gray.100', 'gray.700')}>
       <Container maxW="container.xl">
-        <Flex h={16} alignItems="center" justifyContent="space-between">
+        <Flex h={20} alignItems="center" justifyContent="space-between">
           {/* Logo */}
           <RouterLink to="/">
             <HStack spacing={3}>
               <Image
                 src="/logo-shoutaloud.png"
                 alt="ShoutAloud"
-                h="40px"
+                h="60px"
+                w="auto"
                 objectFit="contain"
                 fallback={<Text fontSize="xl" fontWeight="bold" bgGradient="linear(to-r, blue.600, cyan.500)" bgClip="text">ShoutAloud</Text>}
               />
