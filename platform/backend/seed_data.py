@@ -121,8 +121,6 @@ def seed_data():
                 rejection_count=36,
                 comment_count=23,
                 deadline=now + timedelta(days=15),
-                is_active=True,
-                days_remaining=15,
             ),
             Proposal(
                 title="Programa de becas digitales para jóvenes",
@@ -137,8 +135,6 @@ def seed_data():
                 rejection_count=11,
                 comment_count=15,
                 deadline=now + timedelta(days=20),
-                is_active=True,
-                days_remaining=20,
             ),
             Proposal(
                 title="Centro de salud comunitario 24/7",
@@ -153,8 +149,6 @@ def seed_data():
                 rejection_count=24,
                 comment_count=45,
                 deadline=now + timedelta(days=10),
-                is_active=True,
-                days_remaining=10,
             ),
             Proposal(
                 title="Programa de seguridad vecinal",
@@ -169,8 +163,6 @@ def seed_data():
                 rejection_count=33,
                 comment_count=32,
                 deadline=now + timedelta(days=25),
-                is_active=True,
-                days_remaining=25,
             ),
             Proposal(
                 title="Parque ecológico y centro de reciclaje",
@@ -185,8 +177,6 @@ def seed_data():
                 rejection_count=12,
                 comment_count=8,
                 deadline=now + timedelta(days=30),
-                is_active=True,
-                days_remaining=30,
             ),
         ]
         db.add_all(proposals)
