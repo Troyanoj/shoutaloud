@@ -9,15 +9,19 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request, status, HTTPException
+from fastapi import FastAPI, Request, status, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
 # Add backend directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 load_dotenv()
+
+# Import engine at module level for debug endpoint
+from core.database import engine, get_db
 
 logging.basicConfig(
     level=logging.INFO,
@@ -101,6 +105,28 @@ async def health_redis():
 @app.get("/health/ipfs")
 async def health_ipfs():
     return {"status": "healthy", "ipfs": "not configured"}
+
+
+@app.get("/debug/info")
+async def debug_info(db: Session = Depends(get_db)):
+    from sqlalchemy import inspect
+    from models.proposal import Proposal
+    from models.user import User
+    from models.official import Official
+
+    inspector = inspect(engine)
+    tables = inspector.get_table_names()
+    user_count = db.query(User).count()
+    proposal_count = db.query(Proposal).count()
+    official_count = db.query(Official).count()
+
+    return {
+        "tables": tables,
+        "user_count": user_count,
+        "proposal_count": proposal_count,
+        "official_count": official_count,
+        "database_url": os.getenv("DATABASE_URL", "not set")[:30] + "...",
+    }
 
 @app.get("/")
 async def root():
