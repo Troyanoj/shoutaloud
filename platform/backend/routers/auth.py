@@ -149,26 +149,45 @@ class WorldIDRequest(BaseModel):
 
 @router.post("/world-id", response_model=Token)
 async def world_id_login(request: WorldIDRequest, db: Session = Depends(get_db)):
-    # Verify the proof with Worldcoin's verify endpoint
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://developer.worldcoin.org/api/v2/verify",
-            json={
-                "app_id": WORLD_APP_ID,
-                "action": request.action,
-                "signal": request.action.replace("shoutaloud-", ""),
-                "proof": request.proof,
-                "merkle_root": request.merkle_root,
-                "nullifier_hash": request.nullifier_hash,
-            },
-            timeout=30.0,
-        )
-        result = response.json()
-
-    if not result.get("success"):
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"World ID request received: action={request.action}, app_id={WORLD_APP_ID}")
+    
+    if not WORLD_APP_ID or WORLD_APP_ID == "dev-world-app-id":
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"World ID verification failed: {result.get('detail', 'Unknown error')}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="WORLD_APP_ID not configured in environment",
+        )
+
+    # Verify the proof with Worldcoin's verify endpoint
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://developer.worldcoin.org/api/v2/verify",
+                json={
+                    "app_id": WORLD_APP_ID,
+                    "action": request.action,
+                    "signal": request.action.replace("shoutaloud-", ""),
+                    "proof": request.proof,
+                    "merkle_root": request.merkle_root,
+                    "nullifier_hash": request.nullifier_hash,
+                },
+                timeout=30.0,
+            )
+            result = response.json()
+            logger.info(f"Worldcoin API response: {result}")
+
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"World ID verification failed: {result.get('detail', result.get('code', 'Unknown error'))}",
+            )
+    except httpx.RequestError as e:
+        logger.error(f"Worldcoin API request failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not reach Worldcoin API: {str(e)}",
         )
 
     # Check if user exists by nullifier_hash (stored as DID)
@@ -184,6 +203,7 @@ async def world_id_login(request: WorldIDRequest, db: Session = Depends(get_db))
             "is_active": True,
         }
         user = UserCRUD.create_user(db, user_dict)
+        logger.info(f"New user created with DID: {did}")
 
     # Generate JWT token
     access_token = create_access_token(
