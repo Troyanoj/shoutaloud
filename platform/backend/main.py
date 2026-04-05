@@ -6,6 +6,7 @@ Refactored with modular architecture.
 import os
 import sys
 import logging
+import traceback
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -44,9 +45,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     try:
         init_db()
         logger.info("Database initialized successfully")
-        from seed_data import seed_data
-        seed_data()
-        logger.info("Seed data loaded")
+        try:
+            from seed_data import seed_data
+            seed_data()
+            logger.info("Seed data loaded successfully")
+        except Exception as seed_err:
+            logger.error(f"Seed data failed: {seed_err}")
+            logger.error(traceback.format_exc())
     except Exception as e:
         logger.warning(f"Database initialization failed: {e}. Running in demo mode.")
     yield
