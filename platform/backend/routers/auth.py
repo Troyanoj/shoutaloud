@@ -150,11 +150,17 @@ class WorldIDRequest(BaseModel):
 @router.post("/world-id", response_model=Token)
 async def world_id_login(request: WorldIDRequest, db: Session = Depends(get_db)):
     import logging
+    import traceback
     logger = logging.getLogger(__name__)
     
-    logger.info(f"World ID request received: action={request.action}, app_id={WORLD_APP_ID}")
+    logger.info("=" * 60)
+    logger.info("WORLD ID REQUEST START")
+    logger.info(f"Action: {request.action}")
+    logger.info(f"App ID configured: {WORLD_APP_ID}")
+    logger.info(f"Nullifier hash: {request.nullifier_hash[:20]}...")
     
     if not WORLD_APP_ID or WORLD_APP_ID == "dev-world-app-id":
+        logger.error("WORLD_APP_ID not configured!")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="WORLD_APP_ID not configured in environment",
@@ -162,6 +168,7 @@ async def world_id_login(request: WorldIDRequest, db: Session = Depends(get_db))
 
     # Verify the proof with Worldcoin's verify endpoint
     try:
+        logger.info("Calling Worldcoin API...")
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://developer.worldcoin.org/api/v2/verify",
@@ -176,41 +183,78 @@ async def world_id_login(request: WorldIDRequest, db: Session = Depends(get_db))
                 timeout=30.0,
             )
             result = response.json()
-            logger.info(f"Worldcoin API response: {result}")
+            logger.info(f"Worldcoin API response status: {response.status_code}")
+            logger.info(f"Worldcoin API response body: {result}")
 
         if not result.get("success"):
+            logger.error(f"Worldcoin verification failed: {result}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"World ID verification failed: {result.get('detail', result.get('code', 'Unknown error'))}",
             )
+        
+        logger.info("Worldcoin verification successful!")
     except httpx.RequestError as e:
         logger.error(f"Worldcoin API request failed: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Could not reach Worldcoin API: {str(e)}",
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during Worldcoin verification: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Verification error: {str(e)}",
+        )
 
     # Check if user exists by nullifier_hash (stored as DID)
-    did = f"did:world:{request.nullifier_hash}"
-    user = UserCRUD.get_user_by_did(db, did)
+    try:
+        did = f"did:world:{request.nullifier_hash}"
+        logger.info(f"Looking up user with DID: {did}")
+        user = UserCRUD.get_user_by_did(db, did)
 
-    if not user:
-        # Create new user
-        user_dict = {
-            "did": did,
-            "identity_commitment": did,
-            "is_verified": True,
-            "is_active": True,
-        }
-        user = UserCRUD.create_user(db, user_dict)
-        logger.info(f"New user created with DID: {did}")
+        if not user:
+            logger.info(f"User not found, creating new user...")
+            user_dict = {
+                "did": did,
+                "identity_commitment": did,
+                "is_verified": True,
+                "is_active": True,
+                "municipality_code": 0,
+                "state_code": 0,
+            }
+            user = UserCRUD.create_user(db, user_dict)
+            logger.info(f"New user created with ID: {user.id}")
+        else:
+            logger.info(f"Existing user found with ID: {user.id}")
+    except Exception as e:
+        logger.error(f"Database error: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}",
+        )
 
     # Generate JWT token
-    access_token = create_access_token(
-        data={"sub": user.id}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-
-    UserCRUD.update_last_login(db, user.id)
+    try:
+        access_token = create_access_token(
+            data={"sub": user.id}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        UserCRUD.update_last_login(db, user.id)
+        logger.info(f"JWT token generated for user {user.id}")
+        logger.info("WORLD ID REQUEST SUCCESS")
+        logger.info("=" * 60)
+    except Exception as e:
+        logger.error(f"Token generation error: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Token error: {str(e)}",
+        )
 
     return {
         "access_token": access_token,
