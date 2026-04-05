@@ -108,17 +108,30 @@ async def health_ipfs():
 
 
 @app.get("/debug/info")
-async def debug_info(db: Session = Depends(get_db)):
-    from sqlalchemy import inspect
-    from models.proposal import Proposal
-    from models.user import User
-    from models.official import Official
+async def debug_info():
+    from core.database import SessionLocal, engine
+    from sqlalchemy import inspect, text
 
     inspector = inspect(engine)
     tables = inspector.get_table_names()
-    user_count = db.query(User).count()
-    proposal_count = db.query(Proposal).count()
-    official_count = db.query(Official).count()
+
+    db = SessionLocal()
+    try:
+        user_count = db.execute(text("SELECT COUNT(*) FROM users")).scalar()
+    except Exception:
+        user_count = -1
+
+    try:
+        proposal_count = db.execute(text("SELECT COUNT(*) FROM proposals")).scalar()
+    except Exception:
+        proposal_count = -1
+
+    try:
+        official_count = db.execute(text("SELECT COUNT(*) FROM officials")).scalar()
+    except Exception:
+        official_count = -1
+
+    db.close()
 
     return {
         "tables": tables,
