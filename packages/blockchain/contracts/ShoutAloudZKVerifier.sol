@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 /**
  * @title ShoutAloudZKVerifier
@@ -14,11 +14,11 @@ contract ShoutAloudZKVerifier {
     // ============ State ============
 
     // Verifying key for identity proofs
-    VerifyingKey public identityVK;
+    VerifyingKey internal identityVK;
     // Verifying key for vote proofs
-    VerifyingKey public voteVK;
+    VerifyingKey internal voteVK;
     // Verifying key for geographic eligibility proofs
-    VerifyingKey public geoEligibilityVK;
+    VerifyingKey internal geoEligibilityVK;
 
     // Nullifier registry to prevent double voting
     mapping(bytes32 => bool) public identityNullifiers;
@@ -61,11 +61,11 @@ contract ShoutAloudZKVerifier {
         owner = msg.sender;
 
         identityVK = VerifyingKey({
-            alpha1: [0, 0],
-            beta2: [[0, 0], [0, 0]],
-            gamma2: [0, 0],
-            delta2: [0, 0],
-            ic: [0, 0]
+            alpha1: [uint256(0), uint256(0)],
+            beta2: [[uint256(0), uint256(0)], [uint256(0), uint256(0)]],
+            gamma2: [uint256(0), uint256(0)],
+            delta2: [uint256(0), uint256(0)],
+            ic: [uint256(0), uint256(0)]
         });
         voteVK = identityVK;
         geoEligibilityVK = identityVK;
@@ -169,7 +169,11 @@ contract ShoutAloudZKVerifier {
     /**
      * @notice Update the verifying key for a proof type
      * @param proofType Type of proof: "identity", "vote", or "geo"
-     * @param vk New verifying key components
+     * @param alpha1 Alpha1 point
+     * @param beta2 Beta2 point
+     * @param gamma2 Gamma2 point
+     * @param delta2 Delta2 point
+     * @param ic IC point
      */
     function updateVerifyingKey(
         string calldata proofType,
@@ -228,7 +232,7 @@ contract ShoutAloudZKVerifier {
     // ============ Internal ============
 
     /**
-     * @notice Internal Groth16 verification using ecrecover-style pairing check
+     * @notice Internal Groth16 verification using pairing check
      * @dev In production, this uses the BN254 curve pairing check
      */
     function _verifyProof(

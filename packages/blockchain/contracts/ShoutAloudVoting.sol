@@ -304,7 +304,12 @@ contract ShoutAloudVoting is ReentrancyGuard, Pausable, AccessControl {
     /**
      * @notice Get proposal results
      * @param proposalId Proposal ID
-     * @return Total votes for YES, NO, ABSTAIN, and participation rate
+     * @return yesVotes Total YES votes
+     * @return noVotes Total NO votes
+     * @return abstainVotes Total ABSTAIN votes
+     * @return totalVotes Total votes cast
+     * @return participationRate Participation rate in basis points
+     * @return isActive Whether voting is still active
      */
     function getResults(uint256 proposalId) 
         external 
@@ -337,7 +342,10 @@ contract ShoutAloudVoting is ReentrancyGuard, Pausable, AccessControl {
      * @notice Get zone-based statistics for auditing
      * @param proposalId Proposal ID
      * @param zone Zone code (municipality/state)
-     * @return Zone-specific voting statistics
+     * @return yesVotes YES votes in zone
+     * @return noVotes NO votes in zone
+     * @return abstainVotes ABSTAIN votes in zone
+     * @return totalVotes Total votes in zone
      */
     function getZoneResults(uint256 proposalId, uint256 zone)
         external
