@@ -188,4 +188,4 @@ export const config = {
   ipfsUrl: IPFS_URL,
 };
 
-export default apiService;
+export default api;
