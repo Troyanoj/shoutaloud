@@ -69,23 +69,26 @@ def seed_data():
             Official(
                 name="Roberto Martínez",
                 position="Alcalde Municipal",
+                level="municipal",
                 municipality_code=1,
                 state_code=1,
-                bio="Alcalde electo para el período 2024-2028",
+                biography="Alcalde electo para el período 2024-2028",
             ),
             Official(
                 name="Ana Rodríguez",
                 position="Diputada Local",
+                level="state",
                 municipality_code=1,
                 state_code=1,
-                bio="Representante del distrito 5",
+                biography="Representante del distrito 5",
             ),
             Official(
                 name="Pedro Sánchez",
                 position="Gobernador",
+                level="state",
                 municipality_code=0,
                 state_code=1,
-                bio="Gobernador del estado",
+                biography="Gobernador del estado",
             ),
         ]
         db.add_all(officials)
@@ -94,12 +97,12 @@ def seed_data():
 
         # Tags
         tags = [
-            Tag(name="transparente", category="positive", description="Propuesta clara y abierta"),
-            Tag(name="innovador", category="positive", description="Solución creativa"),
-            Tag(name="urgente", category="neutral", description="Requiere atención inmediata"),
-            Tag(name="costoso", category="negative", description="Alto presupuesto requerido"),
-            Tag(name="popular", category="positive", description="Amplio apoyo ciudadano"),
-            Tag(name="viável", category="positive", description="Fácil de implementar"),
+            Tag(name="transparente", category="positive", weight=1.0, description="Propuesta clara y abierta"),
+            Tag(name="innovador", category="positive", weight=1.2, description="Solución creativa"),
+            Tag(name="urgente", category="neutral", weight=1.0, description="Requiere atención inmediata"),
+            Tag(name="costoso", category="negative", weight=0.8, description="Alto presupuesto requerido"),
+            Tag(name="popular", category="positive", weight=1.5, description="Amplio apoyo ciudadano"),
+            Tag(name="viável", category="positive", weight=1.3, description="Fácil de implementar"),
         ]
         db.add_all(tags)
         db.flush()
