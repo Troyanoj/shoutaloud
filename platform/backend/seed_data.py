@@ -18,8 +18,8 @@ def seed_data():
         user_count = db.query(User).count()
         logger.info(f"Current user count: {user_count}")
 
-        if user_count > 0:
-            logger.info("Database already has data, skipping seed")
+        if user_count >= 3:
+            logger.info("Database already has seed data, skipping")
             return
 
         logger.info("Seeding database with sample data...")
@@ -96,7 +96,11 @@ def seed_data():
         logger.info(f"Created {len(officials)} officials")
 
         # Tags
-        tags = [
+        tag_names = ["transparente", "innovador", "urgente", "costoso", "popular", "viável"]
+        existing_tags = db.query(Tag).filter(Tag.name.in_(tag_names)).all()
+        existing_names = {t.name for t in existing_tags}
+
+        tags_to_create = [
             Tag(name="transparente", category="positive", weight=1.0, description="Propuesta clara y abierta"),
             Tag(name="innovador", category="positive", weight=1.2, description="Solución creativa"),
             Tag(name="urgente", category="neutral", weight=1.0, description="Requiere atención inmediata"),
@@ -104,9 +108,13 @@ def seed_data():
             Tag(name="popular", category="positive", weight=1.5, description="Amplio apoyo ciudadano"),
             Tag(name="viável", category="positive", weight=1.3, description="Fácil de implementar"),
         ]
-        db.add_all(tags)
-        db.flush()
-        logger.info(f"Created {len(tags)} tags")
+        tags = [t for t in tags_to_create if t.name not in existing_names]
+        if tags:
+            db.add_all(tags)
+            db.flush()
+        else:
+            tags = existing_tags
+        logger.info(f"Created/skipped {len(tags)} tags")
 
         # Proposals
         now = datetime.utcnow()
