@@ -173,19 +173,40 @@ async def run_migration():
             comment, notification, audit_log, ai_analysis,
             scraped_document, moderation,
         )
+        from sqlalchemy import text
 
-        # Drop all tables
-        Base.metadata.drop_all(bind=engine)
+        # Drop all tables with CASCADE
+        db = SessionLocal()
+        try:
+            db.execute(text("""
+                DROP TABLE IF EXISTS audit_logs CASCADE;
+                DROP TABLE IF EXISTS scraped_documents CASCADE;
+                DROP TABLE IF EXISTS ai_analysis CASCADE;
+                DROP TABLE IF EXISTS moderation_actions CASCADE;
+                DROP TABLE IF EXISTS content_reports CASCADE;
+                DROP TABLE IF EXISTS notifications CASCADE;
+                DROP TABLE IF EXISTS ratings CASCADE;
+                DROP TABLE IF EXISTS comments CASCADE;
+                DROP TABLE IF EXISTS votes CASCADE;
+                DROP TABLE IF EXISTS proposal_tags CASCADE;
+                DROP TABLE IF EXISTS tags CASCADE;
+                DROP TABLE IF EXISTS proposals CASCADE;
+                DROP TABLE IF EXISTS officials CASCADE;
+                DROP TABLE IF EXISTS reputation_scores CASCADE;
+                DROP TABLE IF EXISTS moderation_reports CASCADE;
+                DROP TABLE IF EXISTS users CASCADE;
+            """))
+            db.commit()
+        finally:
+            db.close()
 
         # Recreate all tables
         Base.metadata.create_all(bind=engine)
 
         # Verify
-        db = SessionLocal()
         from sqlalchemy import inspect
         inspector = inspect(engine)
         tables = inspector.get_table_names()
-        db.close()
 
         return {
             "status": "success",
